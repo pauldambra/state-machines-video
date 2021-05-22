@@ -48,3 +48,8 @@ graph TD
     l --> |log out| out
     l --> |change password| out
 ```
+
+# What are we going to do
+
+### 1. Make a state machine
+We'll test drive a state machine. But with some op

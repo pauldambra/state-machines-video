@@ -32,6 +32,6 @@ class TestUserPool(unittest.TestCase):
 
     def test_cannot_register_twice(self):
         username = any_string()
-        UserPool.register(username, "anything else")
-        registration_result = UserPool.register(username, "anything else")
+        UserPool.register(username, any_string())
+        registration_result = UserPool.register(username, any_string())
         self.assertIsInstance(registration_result, RegistrationFailed)

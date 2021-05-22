@@ -39,6 +39,7 @@ your user account is a state machine
 ```mermaid
 graph TD
     a[anonymous] --> |register| out[logged out]
+    a[anonymous] --> |fail to register| a[anonymous]
     out --> |login successfully| l[logged in]
     out --> |fail login|k[locked]
     out --> |fail login| out

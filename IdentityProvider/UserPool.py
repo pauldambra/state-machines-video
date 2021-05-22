@@ -1,3 +1,6 @@
+from typing import List
+
+
 # In a real user pool we might get lots of context about success or failure
 class RegistrationSucceeded:
     pass
@@ -16,17 +19,19 @@ class FailedLogin:
 
 
 class UserPool(object):
+    users: List[str] = []
 
-    @staticmethod
-    def login(username, password):
-        if username == "valid" or password == "valid":
+    @classmethod
+    def login(cls, username, password):
+        if username in cls.users and password == "valid":
             return SuccessfulLogin()
         else:
             return FailedLogin()
 
-    @staticmethod
-    def register(username, password):
-        if username == "valid" or password == "valid":
+    @classmethod
+    def register(cls, username, password):
+        if username not in cls.users:
+            cls.users.append(username)
             return RegistrationSucceeded()
         else:
             return RegistrationFailed()

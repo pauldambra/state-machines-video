@@ -30,6 +30,10 @@ class TestUserPool(unittest.TestCase):
         registration_result = UserPool.register(any_string(), "valid")
         self.assertIsInstance(registration_result, RegistrationSucceeded)
 
+    def test_registration_fails_for_a_known_bad_user(self):
+        registration_result = UserPool.register("should not register", "valid")
+        self.assertIsInstance(registration_result, RegistrationFailed)
+
     def test_cannot_register_twice(self):
         username = any_string()
         UserPool.register(username, any_string())

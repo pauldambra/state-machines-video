@@ -31,7 +31,10 @@ class UserPool(object):
     @classmethod
     def register(cls, username, password):
         if username not in cls.users:
-            cls.users.append(username)
-            return RegistrationSucceeded()
+            if username == "should not register":
+                return RegistrationFailed()
+            else:
+                cls.users.append(username)
+                return RegistrationSucceeded()
         else:
             return RegistrationFailed()

@@ -10,11 +10,11 @@ class RegistrationFailed:
     pass
 
 
-class SuccessfulLogin:
+class LoginSuccessful:
     pass
 
 
-class FailedLogin:
+class LoginFailed:
     pass
 
 
@@ -24,9 +24,9 @@ class UserPool(object):
     @classmethod
     def login(cls, username, password):
         if username in cls.users and password == "valid":
-            return SuccessfulLogin()
+            return LoginSuccessful()
         else:
-            return FailedLogin()
+            return LoginFailed()
 
     @classmethod
     def register(cls, username, password):

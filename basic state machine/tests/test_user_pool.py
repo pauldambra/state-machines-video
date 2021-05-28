@@ -2,7 +2,7 @@ import unittest
 import random
 import string
 
-from IdentityProvider.UserPool import UserPool, LoginSuccessful, LoginFailed, RegistrationFailed, RegistrationSucceeded
+from IdentityProvider.UserPool import UserPool, LoginFailed, LoginSuccessful, RegistrationSucceeded, RegistrationFailed
 
 
 def any_string(length: int = 10) -> str:

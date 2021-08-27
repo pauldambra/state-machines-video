@@ -93,19 +93,6 @@ class TestUserAccount(unittest.TestCase):
             Locked
         )
 
-    def test_successful_login_clears_locked_account(self):
-        self.assert_user_transitions(
-            [
-                RegistrationSucceeded(),
-                LoginFailed(),
-                LoginFailed(),
-                LoginFailed(),
-                LoginFailed(),
-                LoginSucceeded()
-            ],
-            LoggedIn
-        )
-
     def assert_user_transitions(self, events, final_state):
         state_machine = Anonymous()
         for event in events:

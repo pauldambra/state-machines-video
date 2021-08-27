@@ -4,13 +4,38 @@ from unittest.mock import Mock
 from IdentityProvider.UserPool import LoginSucceeded, LoginFailed, RegistrationFailed, RegistrationSucceeded
 
 
-class User:
+class EventStream:
     def __init__(self):
-        self.subscribers = []
+        self.subscribers = {}
+        self.subscribe_all = []
+
+    def send(self, event):
+        event_type = str(type(event))
+        for subscriber in self.subscribers.get(event_type, []):
+            subscriber.send(event)
+
+        for subscriber in self.subscribe_all:
+            subscriber.send(event)
+
+    def subscribe(self, event_type, subscriber):
+        self.subscribers[str(event_type)] = [subscriber]
+
+    def subscribe_to_all(self, subscriber):
+        self.subscribe_all.append(subscriber)
+
+
+class UserLockedOut:
+    pass
+
+
+class User:
+    def __init__(self, event_stream: EventStream):
+        self.event_stream = event_stream
+        self.event_stream.subscribe_to_all(self)
         self.state = "anonymous"
         self.failed_login_count = 0
 
-    def transition(self, event):
+    def send(self, event):
         if isinstance(event, RegistrationSucceeded):
             self.state = "logged out"
         if self.state == "logged out" and isinstance(event, LoginSucceeded):
@@ -19,11 +44,7 @@ class User:
             self.failed_login_count += 1
             if self.failed_login_count > 3:
                 self.state = "locked"
-                for s in self.subscribers:
-                    s.send_alert("user locked")
-
-    def subscribe_to_locked_out(self, subscriber):
-        self.subscribers.append(subscriber)
+                self.event_stream.send(UserLockedOut())
 
 
 class Alerter:
@@ -32,12 +53,13 @@ class Alerter:
 
 class TellDontAsk(unittest.TestCase):
 
-    def test_tell_me_what_I_need_to_know(self):
-        """tell (me what I need to know) don't (make me) ask"""
-        user = User()
+    def test_event_stream(self):
+        event_stream = EventStream()
+        user = User(event_stream)
+
         alerter = Alerter()
-        alerter.send_alert = Mock()
-        user.subscribe_to_locked_out(alerter)
+        alerter.send = Mock()
+        event_stream.subscribe(UserLockedOut, alerter)
 
         events = [
             RegistrationSucceeded(),
@@ -47,9 +69,30 @@ class TellDontAsk(unittest.TestCase):
             LoginFailed()
         ]
         for event in events:
-            user.transition(event)
+            event_stream.send(event)
 
-        alerter.send_alert.assert_called_once()
+        self.assertEqual(user.state, "locked")
+        alerter.send.assert_called_once()
+
+
+    # def test_tell_me_what_I_need_to_know(self):
+    #     """tell (me what I need to know) don't (make me) ask"""
+    #     user = User()
+    #     alerter = Alerter()
+    #     alerter.send_alert = Mock()
+    #     user.subscribe_to_locked_out(alerter)
+    #
+    #     events = [
+    #         RegistrationSucceeded(),
+    #         LoginFailed(),
+    #         LoginFailed(),
+    #         LoginFailed(),
+    #         LoginFailed()
+    #     ]
+    #     for event in events:
+    #         user.transition(event)
+    #
+    #     alerter.send_alert.assert_called_once()
 
 
 

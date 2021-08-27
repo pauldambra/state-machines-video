@@ -2,7 +2,7 @@ import unittest
 import random
 import string
 
-from IdentityProvider.UserPool import UserPool, LoginFailed, LoginSuccessful, RegistrationSucceeded, RegistrationFailed
+from IdentityProvider.UserPool import UserPool, LoginFailed, LoginSucceeded, RegistrationSucceeded, RegistrationFailed
 
 
 def any_string(length: int = 10) -> str:
@@ -19,7 +19,7 @@ class TestUserPool(unittest.TestCase):
     def test_can_login_when_registered_and_the_password_is_the_string_valid(self):
         UserPool.register("a user", "valid")
         login_result = UserPool.login("a user", "valid")
-        self.assertIsInstance(login_result, LoginSuccessful)
+        self.assertIsInstance(login_result, LoginSucceeded)
 
     def test_cannot_login_when_password_is_not_the_string_valid(self):
         UserPool.register("a user", "valid")

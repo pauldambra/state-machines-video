@@ -3,25 +3,33 @@ from unittest.mock import Mock
 
 from IdentityProvider.UserPool import LoginSucceeded, LoginFailed, RegistrationFailed, RegistrationSucceeded
 
+import uuid
 
-class EventStream:
+"""
+the next thing to do is to store the events
+and to let a client be able to 
+  * read forwards from an event
+  * read backwards from an event
+  * to specify the expected next event  
+"""
+
+class EventStore:
     def __init__(self):
-        self.subscribers = {}
-        self.subscribe_all = []
+        self.stream_subscriptions = {}
 
-    def send(self, event):
-        event_type = str(type(event))
-        for subscriber in self.subscribers.get(event_type, []):
+    def send(self, event, stream_name: str):
+        for subscriber in self.stream_subscriptions.get(stream_name, []):
             subscriber.send(event)
 
-        for subscriber in self.subscribe_all:
+        event_type = type(event).__name__
+        for subscriber in self.stream_subscriptions.get(event_type, []):
             subscriber.send(event)
 
-    def subscribe(self, event_type, subscriber):
-        self.subscribers[str(event_type)] = [subscriber]
+    def subscribe(self, stream_name: str, subscriber):
+        if stream_name not in self.stream_subscriptions.keys():
+            self.stream_subscriptions[stream_name] = []
 
-    def subscribe_to_all(self, subscriber):
-        self.subscribe_all.append(subscriber)
+        self.stream_subscriptions[stream_name].append(subscriber)
 
 
 class UserLockedOut:
@@ -29,9 +37,11 @@ class UserLockedOut:
 
 
 class User:
-    def __init__(self, event_stream: EventStream):
+    def __init__(self, event_stream: EventStore, user_id: uuid = None):
         self.event_stream = event_stream
-        self.event_stream.subscribe_to_all(self)
+        self.user_id = user_id
+        self.stream_name = "User-" + str(self.user_id)
+        self.event_stream.subscribe(self.stream_name, self)
         self.state = "anonymous"
         self.failed_login_count = 0
 
@@ -44,7 +54,7 @@ class User:
             self.failed_login_count += 1
             if self.failed_login_count > 3:
                 self.state = "locked"
-                self.event_stream.send(UserLockedOut())
+                self.event_stream.send(UserLockedOut(), self.stream_name)
 
 
 class Alerter:
@@ -53,23 +63,86 @@ class Alerter:
 
 class TellDontAsk(unittest.TestCase):
 
-    def test_event_stream(self):
-        event_stream = EventStream()
-        user = User(event_stream)
+    def setUp(self):
+        self.event_store = EventStore()
+
+    def write_to_stream(self, stream_name: str, events):
+        es = events
+        for event in es:
+            self.event_store.send(event, stream_name)
+
+    def test_can_have_more_than_one_user(self):
+        user_one_id = uuid.uuid4()
+        user_one = User(self.event_store, user_one_id)
+
+        user_two_id = uuid.uuid4()
+        user_two = User(self.event_store, user_two_id)
 
         alerter = Alerter()
         alerter.send = Mock()
-        event_stream.subscribe(UserLockedOut, alerter)
+        self.event_store.subscribe("UserLockedOut", alerter)
 
-        events = [
+        self.write_to_stream("User-" + str(user_one_id), [
+            RegistrationSucceeded(),
+            LoginFailed(),
+            LoginFailed(),
+            LoginFailed(),
+        ])
+
+        self.assertNotEqual(user_one.state, "locked")
+        alerter.send.assert_not_called()
+
+        self.write_to_stream("User-" + str(user_two_id), [
             RegistrationSucceeded(),
             LoginFailed(),
             LoginFailed(),
             LoginFailed(),
             LoginFailed()
-        ]
-        for event in events:
-            event_stream.send(event)
+        ])
+
+        self.assertEqual(user_two.state, "locked")
+        self.assertNotEqual(user_one.state, "locked")
+
+    def test_user_stays_up_to_date(self):
+        user_id = uuid.uuid4()
+        user = User(self.event_store, user_id)
+
+        alerter = Alerter()
+        alerter.send = Mock()
+        self.event_store.subscribe("UserLockedOut", alerter)
+
+        self.write_to_stream("User-" + str(user_id), [
+            RegistrationSucceeded(),
+            LoginFailed(),
+            LoginFailed(),
+            LoginFailed(),
+        ])
+
+        self.assertNotEqual(user.state, "locked")
+        alerter.send.assert_not_called()
+
+        self.write_to_stream("User-" + str(user_id), [
+            LoginFailed(),
+        ])
+
+        self.assertEqual(user.state, "locked")
+        alerter.send.assert_called_once()
+
+    def test_event_stream(self):
+        user_id = uuid.uuid4()
+        user = User(self.event_store, user_id)
+
+        alerter = Alerter()
+        alerter.send = Mock()
+        self.event_store.subscribe("UserLockedOut", alerter)
+
+        self.write_to_stream("User-" + str(user_id), [
+            RegistrationSucceeded(),
+            LoginFailed(),
+            LoginFailed(),
+            LoginFailed(),
+            LoginFailed()
+        ])
 
         self.assertEqual(user.state, "locked")
         alerter.send.assert_called_once()
@@ -77,10 +150,10 @@ class TellDontAsk(unittest.TestCase):
 
     # def test_tell_me_what_I_need_to_know(self):
     #     """tell (me what I need to know) don't (make me) ask"""
-    #     user = User()
+    #     user_one = User()
     #     alerter = Alerter()
     #     alerter.send_alert = Mock()
-    #     user.subscribe_to_locked_out(alerter)
+    #     user_one.subscribe_to_locked_out(alerter)
     #
     #     events = [
     #         RegistrationSucceeded(),
@@ -90,73 +163,73 @@ class TellDontAsk(unittest.TestCase):
     #         LoginFailed()
     #     ]
     #     for event in events:
-    #         user.transition(event)
+    #         user_one.transition(event)
     #
     #     alerter.send_alert.assert_called_once()
 
 
 
-class TestUserAccount(unittest.TestCase):
-
-    def test_registration_failed_leaves_user_anonymous(self):
-        self.assert_user_transitions(
-            [
-                RegistrationFailed()
-            ],
-            "anonymous"
-        )
-
-    def test_registration_succeeded_leaves_user_logged_out(self):
-        self.assert_user_transitions(
-            [
-                RegistrationSucceeded()
-            ],
-            "logged out"
-        )
-
-    def test_successful_login_leaves_user_logged_in(self):
-        self.assert_user_transitions(
-            [
-                RegistrationSucceeded(),
-                LoginSucceeded()
-            ],
-            "logged in"
-        )
-
-    def test_single_failed_login_leaves_user_logged_out(self):
-        self.assert_user_transitions(
-            [
-                RegistrationSucceeded(),
-                LoginFailed(),
-            ],
-            "logged out"
-        )
-
-    def test_three_failed_logins_leaves_user_logged_out(self):
-        self.assert_user_transitions(
-            [
-                RegistrationSucceeded(),
-                LoginFailed(),
-                LoginFailed(),
-                LoginFailed(),
-            ],
-            "logged out"
-        )
-
-    def test_four_failed_logins_leaves_user_locked(self):
-        self.assert_user_transitions(
-            [
-                RegistrationSucceeded(),
-                LoginFailed(),
-                LoginFailed(),
-                LoginFailed(),
-                LoginFailed(),
-            ],
-            "locked"
-        )
-
-    def assert_user_transitions(self, events, final_state: str):
-        user = User()
-        for event in events:
-            user.transition(event)
-        self.assertEqual(user.state, final_state)
+# class TestUserAccount(unittest.TestCase):
+#
+#     def test_registration_failed_leaves_user_anonymous(self):
+#         self.assert_user_transitions(
+#             [
+#                 RegistrationFailed()
+#             ],
+#             "anonymous"
+#         )
+#
+#     def test_registration_succeeded_leaves_user_logged_out(self):
+#         self.assert_user_transitions(
+#             [
+#                 RegistrationSucceeded()
+#             ],
+#             "logged out"
+#         )
+#
+#     def test_successful_login_leaves_user_logged_in(self):
+#         self.assert_user_transitions(
+#             [
+#                 RegistrationSucceeded(),
+#                 LoginSucceeded()
+#             ],
+#             "logged in"
+#         )
+#
+#     def test_single_failed_login_leaves_user_logged_out(self):
+#         self.assert_user_transitions(
+#             [
+#                 RegistrationSucceeded(),
+#                 LoginFailed(),
+#             ],
+#             "logged out"
+#         )
+#
+#     def test_three_failed_logins_leaves_user_logged_out(self):
+#         self.assert_user_transitions(
+#             [
+#                 RegistrationSucceeded(),
+#                 LoginFailed(),
+#                 LoginFailed(),
+#                 LoginFailed(),
+#             ],
+#             "logged out"
+#         )
+#
+#     def test_four_failed_logins_leaves_user_locked(self):
+#         self.assert_user_transitions(
+#             [
+#                 RegistrationSucceeded(),
+#                 LoginFailed(),
+#                 LoginFailed(),
+#                 LoginFailed(),
+#                 LoginFailed(),
+#             ],
+#             "locked"
+#         )
+#
+#     def assert_user_transitions(self, events, final_state: str):
+#         user = User()
+#         for event in events:
+#             user.transition(event)
+#         self.assertEqual(user.state, final_state)
